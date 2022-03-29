@@ -10,14 +10,7 @@ from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 # for encoding/decoding messages in base64
-from base64 import urlsafe_b64decode, urlsafe_b64encode
-# for dealing with attachement MIME types
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.image import MIMEImage
-from email.mime.audio import MIMEAudio
-from email.mime.base import MIMEBase
-from mimetypes import guess_type as guess_mime_type
+from base64 import urlsafe_b64decode
 
 # Request all access (permission to read/send/receive emails, manage the inbox, and more)
 SCOPES = ['https://mail.google.com/']
@@ -35,7 +28,7 @@ def gmail_authenticate():
     if os.path.exists("token.pickle"):
         with open("token.pickle", "rb") as token:
             creds = pickle.load(token)
-    # if there are no (valid) credentials availablle, let the user log in.
+    # if there are no (valid) credentials available, let the user log in.
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
@@ -49,8 +42,8 @@ def gmail_authenticate():
 
 
 def search_messages(service, query):
-    result = service.users().messages().list(userId='me',q=query).execute()
-    messages = [ ]
+    result = service.users().messages().list(userId='me', q=query).execute()
+    messages = []
     if 'messages' in result:
         messages.extend(result['messages'])
     while 'nextPageToken' in result:
@@ -232,7 +225,6 @@ def post_alert_to_telegram(job_alert):
         raise Exception(f"Telegram is unhappy. Resp: {resp}")
 
 
-
 def check_and_alert(job_alert: RawJobAlert):
     store = get_store()
     job_id = job_alert.job_id
@@ -254,21 +246,19 @@ def mark_as_read(service, email_id):
     ).execute()
 
 
-# get the Gmail API service
-service = gmail_authenticate()
+if __name__ == "__main__":
+    # get the Gmail API service
+    service = gmail_authenticate()
 
-unread_emails = search_messages(service, "label:professional-job-alert label:unread")
-print("Unread alert emails:")
-print(len(unread_emails))
-for unread_email in unread_emails:
-    email = parse_email(service, unread_email['id'])
-    alerts = email.job_alerts
-    check_and_post_email(email)
-    print(f"Email has {len(alerts)} job alerts")
-    for alert in alerts:
-        check_and_alert(alert)
-        print(alert.job_id)
-    mark_as_read(service, email.email_id)
-#for alert in unread_alerts:
-    # text = get_plaintext(service, alert['id'])
-    # print(get_job_ids(text))
+    unread_emails = search_messages(service, "label:professional-job-alert label:unread")
+    print("Unread alert emails:")
+    print(len(unread_emails))
+    for unread_email in unread_emails:
+        email = parse_email(service, unread_email['id'])
+        alerts = email.job_alerts
+        check_and_post_email(email)
+        print(f"Email has {len(alerts)} job alerts")
+        for alert in alerts:
+            check_and_alert(alert)
+            print(alert.job_id)
+        mark_as_read(service, email.email_id)
