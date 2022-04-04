@@ -2,6 +2,8 @@ import json
 import os
 import pickle
 import re
+import sys
+
 import requests
 import time
 from typing import List
@@ -13,12 +15,42 @@ from google.auth.transport.requests import Request
 from base64 import urlsafe_b64decode
 
 # Request all access (permission to read/send/receive emails, manage the inbox, and more)
+from prometheus_client import Gauge, start_http_server
+
 SCOPES = ['https://mail.google.com/']
 with open("config.json", "r") as f:
     CONFIG = json.load(f)
 our_email = CONFIG["email"]
 BOT_TOKEN = CONFIG["telegram"]["bot_token"]
 CHAT_ID = CONFIG["telegram"]["chat_id"]
+WAIT_BETWEEN_CHECKS = 300
+PROM_PORT = 7369
+
+
+LATEST_STARTUP = Gauge(
+    "indeed_emails_latest_startup_unixtime",
+    "Time the script was last started up"
+)
+LATEST_SCAN = Gauge(
+    "indeed_emails_latest_scan_unixtime",
+    "Time the script last scanned for emails"
+)
+LATEST_EMAIL = Gauge(
+    "indeed_emails_latest_email_unixtime",
+    "Time the script last found an email to check"
+)
+LATEST_ALERT = Gauge(
+    "indeed_emails_latest_alert_unixtime",
+    "Time the script last sent an alert to telegram"
+)
+EMAILS_IN_STORE = Gauge(
+    "indeed_emails_emails_in_store_count",
+    "Count of how many emails have been stored"
+)
+JOBS_IN_STORE = Gauge(
+    "indeed_emails_jobs_in_store_count",
+    "Count of how many job alerts have been stored"
+)
 
 
 def gmail_authenticate():
@@ -190,12 +222,16 @@ def get_store():
         store["job_ids"] = {}
     if "email_ids" not in store:
         store["email_ids"] = {}
+    EMAILS_IN_STORE.set(len(store["email_ids"]))
+    JOBS_IN_STORE.set(len(store["job_ids"]))
     return store
 
 
 def save_store(store):
     with open("job_store.json", "w") as f:
         json.dump(store, f, indent=2)
+    EMAILS_IN_STORE.set(len(store["email_ids"]))
+    JOBS_IN_STORE.set(len(store["job_ids"]))
 
 
 def check_and_post_email(email: Email):
@@ -231,6 +267,7 @@ def check_and_alert(job_alert: RawJobAlert):
     if job_id in store['job_ids']:
         return
     print("POSTING ALERT")
+    LATEST_ALERT.set_to_current_time()
     post_alert_to_telegram(job_alert)
     store['job_ids'][job_id] = job_alert.to_json()
     save_store(store)
@@ -246,14 +283,13 @@ def mark_as_read(service, email_id):
     ).execute()
 
 
-if __name__ == "__main__":
-    # get the Gmail API service
-    service = gmail_authenticate()
-
+def scan_and_process(service) -> None:
+    LATEST_SCAN.set_to_current_time()
     unread_emails = search_messages(service, "label:professional-job-alert label:unread")
     print("Unread alert emails:")
     print(len(unread_emails))
     for unread_email in unread_emails:
+        LATEST_EMAIL.set_to_current_time()
         email = parse_email(service, unread_email['id'])
         alerts = email.job_alerts
         check_and_post_email(email)
@@ -262,3 +298,17 @@ if __name__ == "__main__":
             check_and_alert(alert)
             print(alert.job_id)
         mark_as_read(service, email.email_id)
+
+
+if __name__ == "__main__":
+    LATEST_STARTUP.set_to_current_time()
+    start_http_server(PROM_PORT)
+    # get the Gmail API service
+    service = gmail_authenticate()
+
+    scan_and_process(service)
+
+    if "loop" in sys.argv:
+        while True:
+            time.sleep(WAIT_BETWEEN_CHECKS)
+            scan_and_process(service)
