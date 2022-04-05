@@ -302,6 +302,7 @@ def scan_and_process(service) -> None:
 
 if __name__ == "__main__":
     LATEST_STARTUP.set_to_current_time()
+    get_store()  # Get store, to initialise metrics
     start_http_server(PROM_PORT)
     # get the Gmail API service
     service = gmail_authenticate()
