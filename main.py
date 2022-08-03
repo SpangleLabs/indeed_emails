@@ -13,10 +13,11 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 # for encoding/decoding messages in base64
 from base64 import urlsafe_b64decode
+from prometheus_client import Gauge, start_http_server
+from tenacity import Retrying, stop_after_attempt, wait_fixed
+
 
 # Request all access (permission to read/send/receive emails, manage the inbox, and more)
-from prometheus_client import Gauge, start_http_server
-
 SCOPES = ['https://mail.google.com/']
 with open("config.json", "r") as f:
     CONFIG = json.load(f)
@@ -80,7 +81,9 @@ def search_messages(service, query):
         messages.extend(result['messages'])
     while 'nextPageToken' in result:
         page_token = result['nextPageToken']
-        result = service.users().messages().list(userId='me',q=query, pageToken=page_token).execute()
+        for attempt in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(2)):
+            with attempt:
+                result = service.users().messages().list(userId='me',q=query, pageToken=page_token).execute()
         if 'messages' in result:
             messages.extend(result['messages'])
     return messages
