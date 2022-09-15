@@ -240,6 +240,8 @@ class RawJobAlert:
             match = id_regex.search(self.link)
             if not match:
                 match = id_regex.search(self.correct_link)
+            if not match:
+                match = id_regex.search(self.selenium_link)
             self._job_id = match.group(1)
         return self._job_id
 
