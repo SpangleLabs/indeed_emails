@@ -4,3 +4,5 @@ google-auth-oauthlib
 requests
 prometheus-client
 tenacity
+selenium
+webdriver-manager

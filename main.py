@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 import pickle
@@ -13,8 +14,13 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 # for encoding/decoding messages in base64
 from base64 import urlsafe_b64decode
+# Metrics
 from prometheus_client import Gauge, start_http_server
+# For retrying
 from tenacity import Retrying, stop_after_attempt, wait_fixed
+# For bypassing forwarding pages
+from selenium import webdriver
+from webdriver_manager.chrome import ChromeDriverManager
 
 
 # Request all access (permission to read/send/receive emails, manage the inbox, and more)
@@ -52,6 +58,35 @@ JOBS_IN_STORE = Gauge(
     "indeed_emails_jobs_in_store_count",
     "Count of how many job alerts have been stored"
 )
+
+
+class SeleniumHandler:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:66.0) Gecko/20100101 Firefox/66.0",
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "DNT": "1",
+        "Connection": "close",
+        "Upgrade-Insecure-Requests": "1"
+    }
+
+    def __init__(self):
+        op = webdriver.ChromeOptions()
+        op.add_argument('--headless')
+        self.driver = webdriver.Chrome(ChromeDriverManager().install(), options=op)
+        self.last_request = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=10)
+
+    def url_after_redirect(self, original_url: str) -> str:
+        while datetime.datetime.now(datetime.timezone.utc) < self.last_request + datetime.timedelta(seconds=10):
+            time.sleep(0.1)
+        self.last_request = datetime.datetime.now(datetime.timezone.utc)
+        self.driver.get(original_url)
+        time.sleep(3)
+        self.last_request = datetime.datetime.now(datetime.timezone.utc)
+        return self.driver.current_url
+
+
+SELENIUM_HANDLER = SeleniumHandler()
 
 
 def gmail_authenticate():
@@ -164,6 +199,7 @@ class RawJobAlert:
         self.other_lines = other_lines
         self._job_id = None
         self._corrected_link = None
+        self._selenium_link = None
 
     @classmethod
     def parse_text_block(cls, text_block: str) -> "RawJobAlert":
@@ -191,6 +227,13 @@ class RawJobAlert:
         return self._corrected_link
 
     @property
+    def selenium_link(self) -> str:
+        if self._selenium_link is None:
+            selenium_link = SELENIUM_HANDLER.url_after_redirect(self.link)
+            self._selenium_link = selenium_link
+        return self._selenium_link
+
+    @property
     def job_id(self):
         if self._job_id is None:
             id_regex = re.compile(r"jk=([a-z0-9A-Z]+)")
@@ -210,6 +253,7 @@ class RawJobAlert:
             "subtitle": self.subtitle,
             "link": self.link,
             "correct_link": self._corrected_link,
+            "selenium_link": self._selenium_link,
             "job_id": self._job_id,
             "other_lines": self.other_lines
         }
