@@ -110,7 +110,9 @@ def gmail_authenticate():
 
 
 def search_messages(service, query):
-    result = service.users().messages().list(userId='me', q=query).execute()
+    for attempt in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(2)):
+        with attempt:
+            result = service.users().messages().list(userId='me', q=query).execute()
     messages = []
     if 'messages' in result:
         messages.extend(result['messages'])
@@ -118,7 +120,7 @@ def search_messages(service, query):
         page_token = result['nextPageToken']
         for attempt in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(2)):
             with attempt:
-                result = service.users().messages().list(userId='me',q=query, pageToken=page_token).execute()
+                result = service.users().messages().list(userId='me', q=query, pageToken=page_token).execute()
         if 'messages' in result:
             messages.extend(result['messages'])
     return messages
