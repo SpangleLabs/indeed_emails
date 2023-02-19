@@ -20,7 +20,7 @@ from prometheus_client import Gauge, start_http_server
 from tenacity import Retrying, stop_after_attempt, wait_fixed
 # For bypassing forwarding pages
 from selenium import webdriver
-from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.firefox import GeckoDriverManager
 
 
 # Request all access (permission to read/send/receive emails, manage the inbox, and more)
@@ -71,9 +71,9 @@ class SeleniumHandler:
     }
 
     def __init__(self):
-        op = webdriver.ChromeOptions()
-        op.add_argument('--headless')
-        self.driver = webdriver.Chrome(ChromeDriverManager().install(), options=op)
+        op = webdriver.firefox.options.Options()
+        op.headless = True
+        self.driver = webdriver.Firefox(executable_path=GeckoDriverManager().install(), options=op)
         self.last_request = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=10)
 
     def url_after_redirect(self, original_url: str) -> str:
