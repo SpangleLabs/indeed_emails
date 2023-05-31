@@ -81,7 +81,7 @@ JOB_ID_FROM_REQUEST.labels(result="worked")
 JOB_ID_FROM_REQUEST.labels(result="failed")
 JOB_ID_FROM_SELENIUM = Counter(
     "indeed_emails_selenium_attempts_count",
-    "Count of how many times we had to use selenium to try and get the job ID of a link"
+    "Count of how many times we had to use selenium to try and get the job ID of a link",
     labelnames=["result"],
 )
 JOB_ID_FROM_SELENIUM.labels(result="worked")
