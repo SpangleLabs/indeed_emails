@@ -7,7 +7,7 @@ import sys
 
 import requests
 import time
-from typing import List
+from typing import List, Optional
 # Gmail API utils
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -58,6 +58,34 @@ JOBS_IN_STORE = Gauge(
     "indeed_emails_jobs_in_store_count",
     "Count of how many job alerts have been stored"
 )
+JOB_ID_FROM_REGEX = Counter(
+    "indeed_emails_job_id_regex_match_count",
+    "Count of how many times we have tried to extract the job ID from the link in the email",
+    labelnames=["result"],
+)
+JOB_ID_FROM_REGEX.labels(result="worked")
+JOB_ID_FROM_REGEX.labels(result="failed")
+JOB_ID_FROM_REQUEST = Counter(
+    "indeed_emails_job_id_from_request_count",
+    "Count of how many times we had to make a http request to try and get the job ID of a link",
+    labelnames=["result"],
+)
+JOB_ID_FROM_REQUEST.labels(result="worked")
+JOB_ID_FROM_REQUEST.labels(result="failed")
+JOB_ID_FROM_SELENIUM = Counter(
+    "indeed_emails_selenium_attempts_count",
+    "Count of how many times we had to use selenium to try and get the job ID of a link"
+    labelnames=["result"],
+)
+JOB_ID_FROM_SELENIUM.labels(result="worked")
+JOB_ID_FROM_SELENIUM.labels(result="failed")
+FAILED_JOB_ID = Counter(
+    "indeed_emails_failed_to_fetch_job_id_count",
+    "Count of how many times we've attempted and failed to get a job ID"
+)
+
+
+UNKNOWN_JOB_ID = "unknown_job_id"
 
 
 class SeleniumHandler:
@@ -236,19 +264,32 @@ class RawJobAlert:
         return self._selenium_link
 
     @property
-    def job_id(self):
+    def job_id(self) -> str:
         if self._job_id is None:
             id_regex = re.compile(r"jk=([a-z0-9A-Z]+)")
             match = id_regex.search(self.link)
+            label_val = "worked" if match else "failed"
+            JOB_ID_FROM_REGEX.labels(result=label_val).inc()
             if not match:
                 match = id_regex.search(self.correct_link)
+                label_val = "worked" if match else "failed"
+                JOB_ID_FROM_REQUEST.labels(result=label_val).inc()
             if not match:
                 match = id_regex.search(self.selenium_link)
+                label_val = "worked" if match else "failed"
+                JOB_ID_FROM_SELENIUM.labels(result=label_val).inc()
+            if not match:
+                print(f"ERROR: Can't find Job ID for link: {self.link}")
+                FAILED_JOB_ID.inc()
+                return UNKNOWN_JOB_ID
             self._job_id = match.group(1)
         return self._job_id
 
     @property
     def short_link(self):
+        job_id = self.job_id
+        if job_id == UNKNOWN_JOB_ID:
+            return self.link
         return f"https://uk.indeed.com/viewjob?jk={self.job_id}"
 
     def to_json(self):
@@ -296,11 +337,14 @@ def check_and_post_email(email: Email):
 
 def post_alert_to_telegram(job_alert):
     time.sleep(1)
+    suffix = ""
+    if job_alert.job_id == UNKNOWN_JOB_ID:
+        suffix = "\nJob ID unknown, may be repeat"
     resp = requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
         json={
             "chat_id": CHAT_ID,
-            "text": f"New job alert.\nTitle: {job_alert.title}\n{job_alert.subtitle}\n{job_alert.short_link}"
+            "text": f"New job alert.\nTitle: {job_alert.title}\n{job_alert.subtitle}\n{job_alert.short_link}{suffix}"
         }
     ).json()
     print(resp)
@@ -315,13 +359,14 @@ def post_alert_to_telegram(job_alert):
 def check_and_alert(job_alert: RawJobAlert):
     store = get_store()
     job_id = job_alert.job_id
-    if job_id in store['job_ids']:
+    if job_id != UNKNOWN_JOB_ID and job_id in store['job_ids']:
         return
     print("POSTING ALERT")
     LATEST_ALERT.set_to_current_time()
     post_alert_to_telegram(job_alert)
-    store['job_ids'][job_id] = job_alert.to_json()
-    save_store(store)
+    if job_id != UNKNOWN_JOB_ID:
+        store['job_ids'][job_id] = job_alert.to_json()
+        save_store(store)
 
 
 def mark_as_read(service, email_id):
