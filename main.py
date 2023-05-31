@@ -179,7 +179,8 @@ class Email:
         alerts = []
         for job_block in job_blocks:
             alert = RawJobAlert.parse_text_block(job_block)
-            alerts.append(alert)
+            if alert:
+                alerts.append(alert)
         self._job_alerts = alerts
         return alerts
 
@@ -232,7 +233,9 @@ class RawJobAlert:
         self._selenium_link = None
 
     @classmethod
-    def parse_text_block(cls, text_block: str) -> "RawJobAlert":
+    def parse_text_block(cls, text_block: str) -> Optional["RawJobAlert"]:
+        if text_block.strip().startswith("Do not share this email"):
+            return None
         lines = text_block.strip().split("\n")
         title = lines[0]
         subtitle = lines[1]
