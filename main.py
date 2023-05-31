@@ -58,6 +58,13 @@ JOBS_IN_STORE = Gauge(
     "indeed_emails_jobs_in_store_count",
     "Count of how many job alerts have been stored"
 )
+PARSED_JOB_BLOCKS = Counter(
+    "indeed_emails_job_block_parse_count",
+    "Count of how many times we tried to parse a job block in an email",
+    labelnames=["result"],
+)
+PARSED_JOB_BLOCKS.labels(result="worked")
+PARSED_JOB_BLOCKS.labels(result="failed")
 JOB_ID_FROM_REGEX = Counter(
     "indeed_emails_job_id_regex_match_count",
     "Count of how many times we have tried to extract the job ID from the link in the email",
@@ -174,11 +181,10 @@ class Email:
         job_count = int(blocks[0].split("\n")[1].split()[0])
         print(f"{job_count} new jobs")
         job_blocks = blocks[2:-6]
-        if len(job_blocks) != job_count:
-            raise Exception(f"Missing job block. Should be {job_count} jobs. But found {len(job_blocks)} blocks.")
         alerts = []
         for job_block in job_blocks:
             alert = RawJobAlert.parse_text_block(job_block)
+            PARSED_JOB_BLOCKS.labels(result="worked" if alert else "failed").inc()
             if alert:
                 alerts.append(alert)
         self._job_alerts = alerts
