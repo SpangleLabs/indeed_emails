@@ -15,7 +15,7 @@ from google.auth.transport.requests import Request
 # for encoding/decoding messages in base64
 from base64 import urlsafe_b64decode
 # Metrics
-from prometheus_client import Gauge, start_http_server
+from prometheus_client import Counter, Gauge, start_http_server
 # For retrying
 from tenacity import Retrying, stop_after_attempt, wait_fixed
 # For bypassing forwarding pages
