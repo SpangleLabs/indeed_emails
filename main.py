@@ -112,11 +112,11 @@ class SeleniumHandler:
         self.last_request = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=10)
 
     def url_after_redirect(self, original_url: str) -> str:
-        while datetime.datetime.now(datetime.timezone.utc) < self.last_request + datetime.timedelta(seconds=10):
+        while datetime.datetime.now(datetime.timezone.utc) < self.last_request + datetime.timedelta(seconds=30):
             time.sleep(0.1)
         self.last_request = datetime.datetime.now(datetime.timezone.utc)
         self.driver.get(original_url)
-        time.sleep(3)
+        time.sleep(5)
         self.last_request = datetime.datetime.now(datetime.timezone.utc)
         return self.driver.current_url
 
