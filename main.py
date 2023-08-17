@@ -110,7 +110,7 @@ class SeleniumHandler:
 
     def __init__(self):
         self._start_docker()
-        self.driver = webdriver.Remote(f"http://{self.CONTAINER_NAME}:4444/wd/hub", DesiredCapabilities.FIREFOX)
+        self.driver = webdriver.Remote("http://127.0.0.1:4444/wd/hub", DesiredCapabilities.FIREFOX)
         self.last_request = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=10)
 
     def url_after_redirect(self, original_url: str) -> str:
@@ -130,8 +130,11 @@ class SeleniumHandler:
             "selenium/standalone-firefox",
             ports={"4444/tcp": 4444},
             name=self.CONTAINER_NAME,
+            detach=True,
         )
         print("Selenium container started")
+        time.sleep(60)
+        print("Waited for it to come up")
 
     def shutdown(self) -> None:
         client = docker.from_env()
