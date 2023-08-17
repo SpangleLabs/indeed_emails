@@ -122,7 +122,7 @@ class SeleniumHandler:
         self.last_request = datetime.datetime.now(datetime.timezone.utc)
         return self.driver.current_url
 
-    async def _start_docker(self) -> None:
+    def _start_docker(self) -> None:
         self.shutdown()
         client = docker.from_env()
         print("Starting selenium container")
