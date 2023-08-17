@@ -127,7 +127,7 @@ class SeleniumHandler:
         client = docker.from_env()
         print("Starting selenium container")
         client.containers.run(
-            "selenium/standlone-firefox",
+            "selenium/standalone-firefox",
             ports={"4444/tcp": 4444},
             name=self.CONTAINER_NAME,
         )
