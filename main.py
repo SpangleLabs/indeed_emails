@@ -131,6 +131,7 @@ class SeleniumHandler:
             ports={"4444/tcp": 4444},
             name=self.CONTAINER_NAME,
         )
+        print("Selenium container started")
 
     def shutdown(self) -> None:
         client = docker.from_env()
