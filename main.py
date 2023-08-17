@@ -7,7 +7,7 @@ import sys
 
 import requests
 import time
-from typing import List, Optional
+from typing import List, Optional, Any
 # Gmail API utils
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -20,8 +20,10 @@ from prometheus_client import Counter, Gauge, start_http_server
 from tenacity import Retrying, stop_after_attempt, wait_fixed
 # For bypassing forwarding pages
 from selenium import webdriver
-from webdriver_manager.firefox import GeckoDriverManager
-
+from selenium.webdriver import DesiredCapabilities
+# For selenium docker container
+import docker
+from docker import errors as docker_errors
 
 # Request all access (permission to read/send/receive emails, manage the inbox, and more)
 SCOPES = ['https://mail.google.com/']
@@ -104,11 +106,11 @@ class SeleniumHandler:
         "Connection": "close",
         "Upgrade-Insecure-Requests": "1"
     }
+    CONTAINER_NAME = "indeed_selenium"
 
     def __init__(self):
-        op = webdriver.firefox.options.Options()
-        op.headless = True
-        self.driver = webdriver.Firefox(executable_path=GeckoDriverManager().install(), options=op)
+        self._start_docker()
+        self.driver = webdriver.Remote(f"http://{self.CONTAINER_NAME}:4444/wd/hub", DesiredCapabilities.FIREFOX)
         self.last_request = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=10)
 
     def url_after_redirect(self, original_url: str) -> str:
@@ -119,6 +121,26 @@ class SeleniumHandler:
         time.sleep(5)
         self.last_request = datetime.datetime.now(datetime.timezone.utc)
         return self.driver.current_url
+
+    async def _start_docker(self) -> None:
+        self.shutdown()
+        client = docker.from_env()
+        print("Starting selenium container")
+        client.containers.run(
+            "selenium/standlone-firefox",
+            ports={"4444/tcp": 4444},
+            name=self.CONTAINER_NAME,
+        )
+
+    def shutdown(self) -> None:
+        client = docker.from_env()
+        try:
+            container = client.containers.get(self.CONTAINER_NAME)
+            print("Found running selenium container, killing it")
+            container.kill()
+            container.remove(force=True)
+        except docker_errors.NotFound:
+            print("Selenium container is not running")
 
 
 SELENIUM_HANDLER = SeleniumHandler()
@@ -144,7 +166,7 @@ def gmail_authenticate():
     return build('gmail', 'v1', credentials=creds)
 
 
-def search_messages(service, query):
+def search_messages(service, query: str) -> List[Any]:
     for attempt in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(2)):
         with attempt:
             result = service.users().messages().list(userId='me', q=query).execute()
@@ -409,12 +431,15 @@ if __name__ == "__main__":
     LATEST_STARTUP.set_to_current_time()
     get_store()  # Get store, to initialise metrics
     start_http_server(PROM_PORT)
-    # get the Gmail API service
-    service = gmail_authenticate()
+    try:
+        # get the Gmail API service
+        service = gmail_authenticate()
 
-    scan_and_process(service)
+        scan_and_process(service)
 
-    if "loop" in sys.argv:
-        while True:
-            time.sleep(WAIT_BETWEEN_CHECKS)
-            scan_and_process(service)
+        if "loop" in sys.argv:
+            while True:
+                time.sleep(WAIT_BETWEEN_CHECKS)
+                scan_and_process(service)
+    finally:
+        SELENIUM_HANDLER.shutdown()
