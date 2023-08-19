@@ -16,6 +16,7 @@ from google.auth.transport.requests import Request
 from base64 import urlsafe_b64decode
 # Metrics
 from prometheus_client import Counter, Gauge, start_http_server
+from selenium.common.exceptions import InvalidSessionIdException
 # For retrying
 from tenacity import Retrying, stop_after_attempt, wait_fixed
 # For bypassing forwarding pages
@@ -117,7 +118,12 @@ class SeleniumHandler:
         while datetime.datetime.now(datetime.timezone.utc) < self.last_request + datetime.timedelta(seconds=30):
             time.sleep(0.1)
         self.last_request = datetime.datetime.now(datetime.timezone.utc)
-        self.driver.get(original_url)
+        try:
+            self.driver.get(original_url)
+        except InvalidSessionIdException:
+            self._start_docker()
+            self.driver = webdriver.Remote("http://127.0.0.1:4444/wd/hub", DesiredCapabilities.FIREFOX)
+            self.driver.get(original_url)
         time.sleep(5)
         self.last_request = datetime.datetime.now(datetime.timezone.utc)
         return self.driver.current_url
