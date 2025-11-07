@@ -111,7 +111,8 @@ class SeleniumHandler:
 
     def __init__(self):
         self._start_docker()
-        self.driver = webdriver.Remote("http://127.0.0.1:4444/wd/hub", DesiredCapabilities.FIREFOX)
+        self.driver_options = webdriver.FirefoxOptions()
+        self.driver = webdriver.Remote("http://127.0.0.1:4444/wd/hub", options=self.driver_options)
         self.last_request = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=10)
 
     def url_after_redirect(self, original_url: str) -> str:
@@ -122,7 +123,7 @@ class SeleniumHandler:
             self.driver.get(original_url)
         except InvalidSessionIdException:
             self._start_docker()
-            self.driver = webdriver.Remote("http://127.0.0.1:4444/wd/hub", DesiredCapabilities.FIREFOX)
+            self.driver = webdriver.Remote("http://127.0.0.1:4444/wd/hub", options=self.driver_options)
             self.driver.get(original_url)
         time.sleep(5)
         self.last_request = datetime.datetime.now(datetime.timezone.utc)
